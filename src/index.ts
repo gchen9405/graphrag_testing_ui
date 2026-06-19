@@ -1,6 +1,7 @@
 import * as http from "http";
 
 import * as config from "./config";
+import * as runner from "./runner";
 import { app, attachWebSocket } from "./server";
 
 function main(): void {
@@ -8,6 +9,8 @@ function main(): void {
   // an unhandled rejection terminate the process (Node 15+ exits by default).
   process.on("unhandledRejection", (reason) => console.error("[unhandledRejection]", reason));
   process.on("uncaughtException", (err) => console.error("[uncaughtException]", err));
+
+  runner.ensureScaffold();   // create msgragtest/{input,output,prompts} + seed prompts
 
   const server = http.createServer(app);
   attachWebSocket(server);

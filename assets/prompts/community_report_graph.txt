@@ -1,0 +1,62 @@
+You are an expert knowledge graph analyst specializing in synthesizing structured information from entities and relationships extracted from a document corpus.
+
+# Goal
+Write a clear, neutral summary of a community detected within a knowledge graph. A "community" is a group of closely related entities and relationships that form a coherent subgraph.
+
+The purpose of this report is to:
+- Describe what entities exist in the community
+- Explain how they are related
+- Highlight notable structural or semantic patterns
+- Preserve fidelity to the source data without speculation
+
+This report is intended to support downstream retrieval, analysis, and exploration. Do not introduce opinions, risk assessments, or impact judgments unless they are explicitly supported by the data.
+
+# Report Structure
+Return a well-formed JSON object with the following fields:
+
+{{
+  "title": <short, specific name for the community>,
+  "summary": <concise overview of the entities and how they relate>,
+  "rating": <number between 1-10 indicating how important/significant this community is>,
+  "rating_explanation": <one sentence explaining the rating>,
+  "findings": [
+    {{
+      "summary": <brief statement of an observed pattern or relationship>,
+      "explanation": <detailed explanation grounded in the provided data>
+    }}
+  ]
+}}
+
+# Guidelines
+- The title should be short and descriptive, reflecting the main entities or concepts.
+- The summary should explain the structure of the community in plain language.
+- The rating should reflect how significant or important this community is within the broader knowledge graph (1 = low, 10 = critical).
+- The rating_explanation should briefly justify the rating based on the community's content.
+- Findings should focus on:
+  - Repeated relationship patterns
+  - Hierarchical or referential structures
+  - Important cross-links between entities
+- Do not speculate beyond what is supported by the data.
+- Do not frame the content in terms of threats, risks, or decision-making unless explicitly present in the data.
+
+# Grounding Rules
+All factual statements must be grounded in the provided data.
+
+When a statement is supported by data, include references in the following format at the end of the sentence:
+
+[Data: <dataset name> (record ids)]
+
+Do not list more than 5 record ids per dataset. If more apply, list the top 5 followed by "+more".
+
+Example:
+"Section A repeatedly references Section B, indicating a strong hierarchical dependency [Data: Relationships (12, 18, 27, 31, 44, +more)]."
+
+# Output Requirements
+- Output must be valid JSON.
+- Do not include markdown, commentary, or text outside the JSON object.
+- Do not invent entities, relationships, or interpretations not supported by the input data.
+
+Use the following text as input:
+{input_text}
+
+Output:

@@ -322,6 +322,36 @@ function clearDir(dir: string): string[] {
   }
 }
 
+/** Create the msgragtest skeleton (input/output/prompts) on startup so the user
+ *  doesn't have to, and seed prompts/ from the bundled templates if it has none
+ *  yet. Idempotent and non-destructive (never clears output, never overwrites an
+ *  existing prompt); logs and continues on any error so startup can't be blocked. */
+export function ensureScaffold(): void {
+  try {
+    fs.mkdirSync(config.INPUT_DIR, { recursive: true });
+    fs.mkdirSync(config.OUTPUT_DIR, { recursive: true });
+    fs.mkdirSync(config.PROMPTS_DIR, { recursive: true });
+
+    if (!hasPrompts() && fs.existsSync(config.SEED_PROMPTS_DIR)) {
+      let copied = 0;
+      for (const entry of fs.readdirSync(config.SEED_PROMPTS_DIR)) {
+        const src = path.join(config.SEED_PROMPTS_DIR, entry);
+        try {
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, path.join(config.PROMPTS_DIR, entry));
+            copied += 1;
+          }
+        } catch {
+          /* skip an unreadable seed file */
+        }
+      }
+      if (copied) console.log(`[scaffold] created ${config.MSGRAG_DIR} and seeded ${copied} prompt file(s).`);
+    }
+  } catch (e) {
+    console.error(`[scaffold] could not prepare ${config.MSGRAG_DIR}: ${(e as Error).message}`);
+  }
+}
+
 /** Rebuild input/ from the currently-staged corpus, then return the file count.
  *  output/ is deliberately LEFT INTACT -- a long index is never thrown away by
  *  starting a run; clear it explicitly with clearOutput(). */

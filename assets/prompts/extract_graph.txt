@@ -1,0 +1,63 @@
+# Goal
+Given an input text, extract:
+1. All relevant entities explicitly mentioned in the text.
+2. All clear, explicitly stated relationships between those entities.
+
+The objective is to produce a high-precision graph representation that faithfully reflects the source material without inference or speculation.
+
+# Instructions
+
+## Step 1: Entity Extraction
+Identify entities that are explicitly named or clearly defined in the text.
+
+For each entity, extract:
+- entity_name: The canonical name of the entity, written in ALL CAPS
+- entity_type: One or more general categories (e.g., ORGANIZATION, PERSON, LOCATION, EVENT, CONCEPT)
+- entity_description: A concise, factual description based only on the text
+
+Format each entity exactly as:
+("entity"{tuple_delimiter}<entity_name>{tuple_delimiter}<entity_type>{tuple_delimiter}<entity_description>)
+
+Guidelines:
+- Do NOT invent entities or infer unstated concepts.
+- Avoid duplicate entities that differ only by formatting, numbering, or minor wording.
+- Prefer canonical names when multiple variants appear.
+- If an entity is mentioned many times, define it once.
+
+## Step 2: Relationship Extraction
+Identify relationships that are explicitly stated or unambiguously implied by the text.
+
+For each relationship, extract:
+- source_entity: Name of the source entity (must match an extracted entity)
+- target_entity: Name of the target entity (must match an extracted entity)
+- relationship_description: A brief explanation grounded in the text
+- relationship_strength: A numeric score from 1–10 indicating how explicitly the relationship is stated
+
+Format each relationship exactly as:
+("relationship"{tuple_delimiter}<source_entity>{tuple_delimiter}<target_entity>{tuple_delimiter}<relationship_description>{tuple_delimiter}<relationship_strength>)
+
+Guidelines:
+- Only include relationships that are clearly supported by the text.
+- Do NOT infer causation, intent, or significance.
+- Prefer structural relationships (e.g., PART OF, REFERENCES, GOVERNS, LOCATED IN).
+- If multiple sentences express the same relationship, include it once.
+
+## Step 3: Output Format
+Return a single list containing:
+- All entity records
+- Followed by all relationship records
+
+Use **{record_delimiter}** to separate records.
+
+When finished, output **{completion_delimiter}** on its own line.
+
+## Language Rules
+- Output must be in English.
+- If translation is required, translate only the descriptions.
+- Do not include commentary, explanations, or formatting outside the specified records.
+
+# Input
+Use the following text as input:
+{input_text}
+
+# Output

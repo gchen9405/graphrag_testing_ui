@@ -1,0 +1,38 @@
+You are synthesizing information from multiple community reports to answer a user's question.
+
+## Instructions
+
+You have been provided with multiple extracted summaries from different community reports. Combine them into a coherent answer.
+
+## Guidelines
+
+1. **Synthesis**
+   - Integrate information across reports into a unified response.
+   - Avoid listing disconnected facts unless synthesis is impossible.
+
+2. **Partial Answers Are Allowed**
+   - If the available information does not fully answer the question, provide the best possible answer using what is known.
+   - Clearly state limitations or uncertainty where appropriate.
+
+3. **No Hallucination**
+   - Do NOT introduce facts not supported by the extracted information.
+   - Reasoning and explanation are allowed, but new factual claims are not.
+
+4. **Consistency**
+   - Resolve minor inconsistencies by favoring the most specific or well-supported information.
+
+5. **Response Format**
+   - Provide a clear, well-structured answer in {response_type} format.
+   - Use cautious language where evidence is incomplete.
+   - Limit your response to {max_length} words.
+
+6. **Insufficient Data Case**
+   - Only state that the question cannot be answered if there is genuinely no relevant information at all.
+
+## Extracted Information from Community Reports
+
+{report_data}
+
+## Question
+
+Using the information above, provide the best possible answer to the user's question (provided below).

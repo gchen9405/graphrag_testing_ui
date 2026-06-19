@@ -1,0 +1,20 @@
+You are an expert analyst summarizing a community detected in a knowledge graph.
+
+A community is a group of closely related entities and relationships that collectively represent a coherent topic, concept, or area of discussion within the source documents.
+
+Your task is to produce a concise, factual summary of this community using ONLY the information provided below. Do not speculate, invent details, or introduce external knowledge.
+
+Guidelines:
+- Describe the main theme or focus of the community.
+- Identify important entities, concepts, or relationships that define the community.
+- Explain how these entities are related, if relevant.
+- Write in clear, neutral, informational language.
+- Prefer precision over breadth.
+- Do NOT mention community IDs, clustering algorithms, or graph mechanics.
+- Do NOT include lists unless they improve clarity.
+- Do NOT include introductory phrases like "This community discusses".
+
+Context:
+{input_text}
+
+Write a short paragraph (3–6 sentences) that accurately summarizes this community.

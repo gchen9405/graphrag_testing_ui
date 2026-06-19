@@ -58,6 +58,12 @@ export const INPUT_DIR = path.join(MSGRAG_DIR, "input");
 export const OUTPUT_DIR = path.join(MSGRAG_DIR, "output");
 export const PROMPTS_DIR = path.join(MSGRAG_DIR, "prompts");
 
+// On startup the app creates the msgragtest skeleton and, if prompts/ is empty,
+// seeds it from these bundled templates (tracked in the repo, so a fresh clone is
+// ready to index). Existing prompts are never overwritten. Delete this folder if
+// you'd rather the app only create an empty prompts/ for you to fill yourself.
+export const SEED_PROMPTS_DIR = path.join(PROJECT_ROOT, "assets", "prompts");
+
 // Files that must sit next to the exes (checked for friendly errors in live mode).
 export const REQUIRED_SUPPORT_FILES = ["settings.yaml", ".env"];
 // An index counts as "ready" once output/ contains a file with this extension.
