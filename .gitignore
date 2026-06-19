@@ -1,0 +1,14 @@
+# Node / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# App runtime data (generated)
+uploads/
+graphrag_runtime/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

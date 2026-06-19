@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>GraphRAG · local pipeline console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Great+Vibes&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ===================== HERO ===================== -->
+  <header class="hero">
+    <canvas id="graphField" aria-hidden="true"></canvas>
+    <div class="hero-veil" aria-hidden="true"></div>
+    <div class="shell hero-inner">
+      <p class="eyebrow">Local pipeline console</p>
+      <h1 class="wordmark">GraphRAG</h1>
+      <p class="thesis">Drop in a corpus, build the knowledge graph, then question what it
+        learned — driving your local GraphRAG executables, on this machine alone.</p>
+      <div id="envBadges" class="badges"></div>
+    </div>
+  </header>
+
+  <main class="shell pipeline">
+    <!-- ===================== STEP 1: CORPUS ===================== -->
+    <section class="station" id="card-upload">
+      <div class="rail" aria-hidden="true"><span class="node" id="node-corpus" data-state="active"></span></div>
+      <div class="station-body">
+        <div class="station-head">
+          <p class="role">Corpus</p>
+          <h2 class="station-title">Add your documents</h2>
+        </div>
+        <p class="hint">Drop <code>.txt</code> files — or a whole folder — below. Anything that
+          isn't a <code>.txt</code> is left out.</p>
+
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Add .txt files">
+          <span class="dz-mark" aria-hidden="true">+</span>
+          <div class="dropzone-inner">
+            <strong>Drop .txt files or a folder</strong>
+            <span class="dz-sub">or click to browse files</span>
+          </div>
+          <input id="fileInput" type="file" accept=".txt,text/plain" multiple hidden />
+          <input id="folderInput" type="file" webkitdirectory directory hidden />
+        </div>
+
+        <div class="browse-extra">
+          <button type="button" class="btn ghost" id="browseFolderBtn">Choose a folder…</button>
+        </div>
+
+        <ul id="fileList" class="file-list"></ul>
+        <div id="uploadMsg" class="msg"></div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 2: INDEX ===================== -->
+    <section class="station" id="card-index">
+      <div class="rail" aria-hidden="true"><span class="node" id="node-graph" data-state="locked"></span></div>
+      <div class="station-body">
+        <div class="station-head">
+          <p class="role">Index</p>
+          <h2 class="station-title">Build the knowledge graph</h2>
+          <span id="indexBadge" class="status-badge idle">idle</span>
+        </div>
+        <p class="hint">Copies your files into <code>msgragtest/input</code> and runs the indexer.
+          Existing output is kept — use <strong>Clear output</strong> for a fresh graph.</p>
+
+        <div class="row">
+          <button id="runIndexBtn" class="btn primary" disabled>Run indexing</button>
+          <button id="clearOutputBtn" class="btn ghost">Clear output</button>
+          <button id="clearLogBtn" class="btn ghost">Clear log</button>
+          <span id="indexMsg" class="msg inline"></span>
+        </div>
+
+        <div class="console-wrap">
+          <div class="console-label"><span class="console-dot"></span>live output</div>
+          <pre id="logConsole" class="console" aria-live="polite"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== STEP 3: QUERY ===================== -->
+    <section class="station disabled" id="card-query">
+      <div class="rail" aria-hidden="true"><span class="node" id="node-query" data-state="locked"></span></div>
+      <div class="station-body">
+        <div class="station-head">
+          <p class="role">Query</p>
+          <h2 class="station-title">Ask the graph</h2>
+        </div>
+        <p class="hint" id="queryHint">Finish indexing to unlock querying.</p>
+
+        <div class="query-form">
+          <input id="queryInput" class="text-input" type="text"
+                 placeholder="Ask a question about your corpus…" />
+          <button id="queryBtn" class="btn primary">Ask</button>
+        </div>
+        <div id="queryMsg" class="msg"></div>
+
+        <div id="answers" class="answers"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="shell footer">
+    <span class="footer-mark" aria-hidden="true"></span>
+    <span>Local single-user tool — nothing leaves this machine.</span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
