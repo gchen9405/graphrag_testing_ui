@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "compile": "bun build ./src/index.ts --compile --outfile graphrag-ui.exe",
     "prestart": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",

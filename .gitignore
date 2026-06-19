@@ -8,6 +8,10 @@ npm-debug.log*
 uploads/
 graphrag_runtime/
 
+# Packaged build output (Bun --compile artifact + assembled ship folder)
+graphrag-ui.exe
+GraphRAG-UI/
+
 # OS / editor
 .DS_Store
 .idea/

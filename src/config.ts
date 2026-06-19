@@ -19,18 +19,34 @@ function expandUser(p: string): string {
   return p;
 }
 
+// In development we run via a runtime (node/bun/tsx), whose binary is process.execPath;
+// in a shipped single-file build, process.execPath IS our own exe. Two defaults below
+// key off this difference: where runtime data lives, and whether mock mode is on.
+// Heuristic: the dev runtime's exe is named node*/bun* -- so don't name the shipped exe that.
+const RUNTIME_EXE = path.basename(process.execPath).toLowerCase();
+const STANDALONE = !(RUNTIME_EXE.startsWith("node") || RUNTIME_EXE.startsWith("bun"));
+
+// Source-tree root in dev (relative to the compiled JS). Holds the EMBEDDED assets
+// (frontend/, assets/prompts/). NOTE: in a single-file build this points inside the
+// binary's virtual FS, so disk-relative reads of those folders need the embed step.
 const PROJECT_ROOT = path.resolve(__dirname, "..");
+
+// Where on-disk RUNTIME DATA lives (graphrag_runtime/, uploads/): the project root in
+// dev, or the folder holding the shipped exe in a standalone build -- i.e. right next
+// to graphrag-ui.exe, which is where graphrag_runtime/ ships.
+const APP_DIR = STANDALONE ? path.dirname(process.execPath) : PROJECT_ROOT;
 
 // MOCK MODE: true = don't launch the real exes (fake logs + dummy artifacts +
 // canned answer; runs on any OS). false = run the real exes.
-// Override at runtime:  set GRAPHRAG_USE_MOCK=0
-export const USE_MOCK: boolean = envFlag("GRAPHRAG_USE_MOCK", true);
+// Default keys off the build: mock in development (no exes on the dev machine), live
+// in a shipped standalone build. Override either way:  set GRAPHRAG_USE_MOCK=0 / =1
+export const USE_MOCK: boolean = envFlag("GRAPHRAG_USE_MOCK", !STANDALONE);
 
-// The folder that contains BOTH executables AND the msgragtest folder. Must be
-// absolute -- on Windows the exe is found by full path, not via cwd. Hard-code it
-// for real use, e.g.  "C:\\graphrag".   Override:  set GRAPHRAG_BASE_DIR=C:\graphrag
+// The folder that contains BOTH executables AND the msgragtest folder. Defaults to
+// graphrag_runtime/ next to the app (project root in dev; the shipped exe's folder in a
+// standalone build). Override with an absolute path:  set GRAPHRAG_BASE_DIR=C:\graphrag
 export const BASE_DIR: string = path.resolve(
-  expandUser(process.env.GRAPHRAG_BASE_DIR ?? path.join(PROJECT_ROOT, "graphrag_runtime"))
+  expandUser(process.env.GRAPHRAG_BASE_DIR ?? path.join(APP_DIR, "graphrag_runtime"))
 );
 
 // Executable file names (inside BASE_DIR).
@@ -62,7 +78,10 @@ export const PROMPTS_DIR = path.join(MSGRAG_DIR, "prompts");
 // seeds it from these bundled templates (tracked in the repo, so a fresh clone is
 // ready to index). Existing prompts are never overwritten. Delete this folder if
 // you'd rather the app only create an empty prompts/ for you to fill yourself.
-export const SEED_PROMPTS_DIR = path.join(PROJECT_ROOT, "assets", "prompts");
+// Shipped LOOSE next to the exe (under APP_DIR), so a compiled build reads the seed
+// templates off disk -- assets/prompts/ ships alongside graphrag-ui.exe. In dev,
+// APP_DIR is the repo root, so this resolves to the repo's assets/prompts/.
+export const SEED_PROMPTS_DIR = path.join(APP_DIR, "assets", "prompts");
 
 // Files that must sit inside msgragtest/ -- the GraphRAG project root the exes read
 // (checked for friendly errors in live mode).
@@ -78,7 +97,9 @@ export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // per-file upload cap (50 MB)
 export const SUBPROCESS_ENCODING = "utf-8"; // try "windows-1252" if output looks garbled
 
 // Server + paths.
-export const STAGING_DIR = path.join(PROJECT_ROOT, "uploads"); // pre-index staging
-export const FRONTEND_DIR = path.join(PROJECT_ROOT, "frontend");
+export const STAGING_DIR = path.join(APP_DIR, "uploads"); // pre-index staging (written next to the exe at runtime)
+// Static UI served to the browser. Shipped LOOSE next to the exe (under APP_DIR):
+// frontend/ ships alongside graphrag-ui.exe; in dev APP_DIR is the repo root.
+export const FRONTEND_DIR = path.join(APP_DIR, "frontend");
 export const HOST = "127.0.0.1";
 export const PORT = 8000;
