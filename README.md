@@ -27,7 +27,8 @@ flow on any OS *without* the real executables, then flip one flag to go live.
 - The two executables (only needed for **live** mode):
   - `graphrag_pipeline.exe` (indexing)
   - `graphrag_querying.exe` (querying)
-  - plus their existing `settings.yaml` and `.env`, sitting next to them.
+  - plus their existing `settings.yaml` and `.env`, placed **inside `msgragtest\`**
+    (the GraphRAG project root) — not next to the exes.
 
   The `msgragtest/` folder and its `prompts/` are **created automatically on startup**
   — `prompts/` is seeded from the bundled templates in `assets/prompts/` (your own
@@ -72,11 +73,11 @@ Other scripts:
 
 ```
 <BASE_DIR>\                       e.g. C:\graphrag
-├── graphrag_pipeline.exe         ┐ you place these 4
-├── graphrag_querying.exe         │
-├── settings.yaml                 │
-├── .env                          ┘
+├── graphrag_pipeline.exe         ┐ you place these 2 exes here
+├── graphrag_querying.exe         ┘
 └── msgragtest\                   ← created by the app on startup
+    ├── settings.yaml             ┐ you place these 2 files inside msgragtest\
+    ├── .env                      ┘
     ├── prompts\                  ← created + seeded from assets/prompts/ on startup
     │   ├── extract_graph.txt
     │   └── …
@@ -84,12 +85,13 @@ Other scripts:
     └── output\                   ← created by the app; indexer writes artifacts here
 ```
 
-You only place the **4 files** (exes + `settings.yaml` + `.env`). The app creates
-`msgragtest\` with `input\`, `output\`, and a seeded `prompts\` for you on startup.
-On each run it rebuilds only `input\` from your staged corpus; **`output\` is
-preserved** (so a long index is never lost by starting a run — wipe it only with the
-**Clear output** button), and **`prompts\` (and anything else under `msgragtest\`) is
-left untouched.**
+You place **4 files**: the **2 exes** in `<BASE_DIR>\`, and `settings.yaml` + `.env`
+**inside `msgragtest\`** (the GraphRAG project root the exes read). The app creates
+`msgragtest\` with `input\`, `output\`, and a seeded `prompts\` on startup — so run the
+app once to scaffold it, then drop the two config files in. On each run it rebuilds only
+`input\` from your staged corpus; **`output\` is preserved** (so a long index is never
+lost by starting a run — wipe it only with the **Clear output** button), and **`prompts\`
+(and anything else under `msgragtest\`) is left untouched.**
 
 The app launches each executable with its working directory set to `BASE_DIR`, so
 the exe's hard-coded relative `msgragtest\` path resolves correctly. **No copying or

@@ -69,6 +69,17 @@ body::before {
   z-index: 0;
 }
 
+/* faint film grain over the whole canvas for filmic depth (#6) */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+}
+
 .shell {
   width: 100%;
   max-width: var(--shell);
@@ -86,6 +97,17 @@ code {
 }
 
 ::selection { background: rgba(var(--node-rgb), 0.30); color: #fff; }
+
+/* visually hidden but available to screen readers (decouples a11y from visual reveal) */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
 
 :focus-visible {
   outline: 2px solid var(--edge);
@@ -156,7 +178,18 @@ code {
   letter-spacing: 0;
   margin: 0;
   padding-bottom: 0.06em;                    /* room for the descender flourish */
-  color: var(--text);
+  /* one-time light sweep across the cursive wordmark on load (#5) */
+  color: transparent;
+  background: linear-gradient(105deg,
+      var(--text) 0%, var(--text) 40%,
+      #ffffff 47%, var(--node-bright) 52%,
+      var(--text) 60%, var(--text) 100%);
+  background-size: 230% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: wordmark-sheen 1.7s cubic-bezier(0.33, 0, 0.2, 1) 0.55s both;
 }
 
 .thesis {
@@ -244,6 +277,17 @@ code {
   background: var(--edge);
   animation: pulse 1.7s ease-in-out infinite;
 }
+.node[data-state="running"]::after {     /* rotating "processing" ring on the live node (#6) */
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, var(--edge) 70deg, transparent 150deg, transparent 360deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 62%, #000 64%);
+  mask: radial-gradient(closest-side, transparent 62%, #000 64%);
+  animation: node-spin 1.3s linear infinite;
+  pointer-events: none;
+}
 .node[data-state="done"] {
   border-color: var(--node);
   background: var(--node);
@@ -251,11 +295,32 @@ code {
 }
 .node[data-state="error"] { border-color: var(--bad); background: var(--bad); }
 
+/* signal that travels the spine when a station completes (#3) — head leads, tail fades */
+.spine-spark {
+  position: absolute;
+  top: 0; left: 0;
+  width: 4px;
+  height: 16px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(var(--edge-rgb), 0) 0%, rgba(var(--edge-rgb), 0.9) 55%, #fff 100%);
+  box-shadow: 0 0 12px 2px rgba(var(--edge-rgb), 0.85);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+  will-change: transform, opacity;
+}
+
 .station-body {
   min-width: 0;            /* let children (log, answers) shrink instead of overflow */
   padding: 30px 2px 34px 24px;
 }
 .station + .station .station-body { border-top: 1px solid var(--line-soft); }
+
+/* staggered "boot-up" entrance of the stations on load (#6) */
+.station-body { animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.station:nth-child(1) .station-body { animation-delay: 0.10s; }
+.station:nth-child(2) .station-body { animation-delay: 0.22s; }
+.station:nth-child(3) .station-body { animation-delay: 0.34s; }
 
 .station.disabled { opacity: 0.5; pointer-events: none; filter: saturate(0.6); }
 
@@ -473,6 +538,17 @@ code {
   background: var(--edge);
   box-shadow: 0 0 8px 0 rgba(var(--edge-rgb), 0.7);
 }
+.console-progress {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--edge);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.console-progress[hidden] { display: none; }
 .console {
   margin: 0;
   height: 300px;
@@ -484,6 +560,9 @@ code {
   color: var(--text-dim);
   white-space: pre-wrap;
   word-break: break-word;
+  /* fade lines at the top/bottom edges of the scroll window (#6) */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 16px, #000 calc(100% - 16px), transparent 100%);
 }
 .console:empty::after {
   content: "Waiting for a run…";
@@ -493,6 +572,50 @@ code {
 .console .l-runner { color: var(--edge); }
 .console .l-ok     { color: var(--ok); }
 .console .l-err    { color: var(--bad); }
+.console.is-live::after {                 /* blinking caret at the live log tail (#6) */
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 0.95em;
+  margin-left: 1px;
+  vertical-align: -0.12em;
+  background: var(--edge);
+  box-shadow: 0 0 6px rgba(var(--edge-rgb), 0.7);
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+/* post-index instrument readout — count-up stats (#4) */
+.index-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 30px;
+  margin-top: 16px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(27, 32, 52, 0.45), rgba(20, 24, 41, 0.25));
+  animation: rise 0.4s ease both;
+}
+.index-stats[hidden] { display: none; }
+.stat-cell { display: flex; flex-direction: column; gap: 3px; }
+.stat-val {
+  font-family: var(--font-mono);
+  font-size: 1.55rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--node);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 16px rgba(var(--node-rgb), 0.35);
+}
+.stat-val.stat-time { color: var(--edge); text-shadow: 0 0 16px rgba(var(--edge-rgb), 0.3); }
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 /* =============================================================================
    QUERY + ANSWERS
@@ -519,6 +642,13 @@ code {
 .query-form .btn.primary { flex: none; }
 
 .answers { display: flex; flex-direction: column; gap: 14px; margin-top: 22px; }
+.answers:empty { margin-top: 12px; }
+.answers:empty::after {
+  content: "Answers will appear here once you ask the graph.";
+  font-size: 0.9rem;
+  color: var(--muted);
+  opacity: 0.7;
+}
 .answer {
   border: 1px solid var(--line);
   border-left: 2px solid var(--edge);
@@ -551,6 +681,20 @@ code {
 }
 .a-body { color: var(--text-dim); white-space: pre-wrap; word-break: break-word; line-height: 1.65; }
 .answer.is-error .a-body { color: var(--bad); }
+
+/* answer reveal — the graph "speaks": a periwinkle caret trails the streamed text */
+.a-body .caret {
+  display: inline-block;
+  width: 0.5ch;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  border-radius: 1px;
+  background: var(--edge);
+  box-shadow: 0 0 7px rgba(var(--edge-rgb), 0.7);
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+.answer.is-streaming .a-q::before { animation: pulse 1.5s ease-in-out infinite; }
 
 .answer details { margin-top: 14px; }
 .answer summary {
@@ -601,6 +745,21 @@ pre.raw {
 .msg.ok  { color: var(--ok); }
 .msg.info { color: var(--edge); }
 
+/* backend-unreachable banner — styled, dismissible, retryable (replaces a raw inject) */
+.boot-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px clamp(18px, 4vw, 28px);
+  background: rgba(255, 123, 108, 0.12);
+  border-bottom: 1px solid rgba(255, 123, 108, 0.4);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.boot-error-msg { margin-right: auto; }
+.boot-error .btn { padding: 7px 14px; }
+
 /* =============================================================================
    FOOTER
    ============================================================================= */
@@ -631,10 +790,16 @@ pre.raw {
   0%, 100% { box-shadow: 0 0 0 0 rgba(var(--edge-rgb), 0.5); }
   50%      { box-shadow: 0 0 0 7px rgba(var(--edge-rgb), 0); }
 }
+@keyframes caret-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+@keyframes wordmark-sheen { from { background-position: 100% 0; } to { background-position: -30% 0; } }
+@keyframes node-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   .hero-inner { animation: none; }
+  /* force the wordmark solid (no clipped-gradient sweep) and drop the spinning ring */
+  .wordmark { color: var(--text); background: none; -webkit-text-fill-color: var(--text); animation: none; }
+  .node[data-state="running"]::after { display: none; }
 }
 
 /* =============================================================================

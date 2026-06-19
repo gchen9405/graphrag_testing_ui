@@ -36,11 +36,12 @@
         <p class="hint">Drop <code>.txt</code> files — or a whole folder — below. Anything that
           isn't a <code>.txt</code> is left out.</p>
 
-        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Add .txt files">
+        <div id="dropzone" class="dropzone" tabindex="0" role="button"
+             aria-labelledby="dzTitle" aria-describedby="dzSub">
           <span class="dz-mark" aria-hidden="true">+</span>
           <div class="dropzone-inner">
-            <strong>Drop .txt files or a folder</strong>
-            <span class="dz-sub">or click to browse files</span>
+            <strong id="dzTitle">Drop .txt files or a folder</strong>
+            <span id="dzSub" class="dz-sub">or click to browse files</span>
           </div>
           <input id="fileInput" type="file" accept=".txt,text/plain" multiple hidden />
           <input id="folderInput" type="file" webkitdirectory directory hidden />
@@ -51,7 +52,7 @@
         </div>
 
         <ul id="fileList" class="file-list"></ul>
-        <div id="uploadMsg" class="msg"></div>
+        <div id="uploadMsg" class="msg" role="status" aria-live="polite"></div>
       </div>
     </section>
 
@@ -71,13 +72,18 @@
           <button id="runIndexBtn" class="btn primary" disabled>Run indexing</button>
           <button id="clearOutputBtn" class="btn ghost">Clear output</button>
           <button id="clearLogBtn" class="btn ghost">Clear log</button>
-          <span id="indexMsg" class="msg inline"></span>
+          <span id="indexMsg" class="msg inline" role="status" aria-live="polite"></span>
         </div>
 
         <div class="console-wrap">
-          <div class="console-label"><span class="console-dot"></span>live output</div>
-          <pre id="logConsole" class="console" aria-live="polite"></pre>
+          <div class="console-label">
+            <span class="console-dot"></span>live output
+            <span id="indexProgress" class="console-progress" hidden></span>
+          </div>
+          <pre id="logConsole" class="console"></pre>
         </div>
+
+        <div id="indexStats" class="index-stats" role="status" aria-live="polite" hidden></div>
       </div>
     </section>
 
@@ -96,9 +102,9 @@
                  placeholder="Ask a question about your corpus…" />
           <button id="queryBtn" class="btn primary">Ask</button>
         </div>
-        <div id="queryMsg" class="msg"></div>
+        <div id="queryMsg" class="msg" role="status" aria-live="polite"></div>
 
-        <div id="answers" class="answers"></div>
+        <div id="answers" class="answers" aria-live="polite"></div>
       </div>
     </section>
   </main>

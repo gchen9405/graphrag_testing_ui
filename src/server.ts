@@ -152,6 +152,11 @@ app.get("/api/index/status", (_req: Request, res: Response) => {
   });
 });
 
+// Best-effort numeric summary for the post-index count-up readout (#4).
+app.get("/api/index/stats", (_req: Request, res: Response) => {
+  res.json(runner.indexStats());
+});
+
 // Manually wipe the indexed artifacts in output/ (explicit, destructive).
 app.post("/api/output/clear", (_req: Request, res: Response) => {
   if (runner.manager.isRunning) {

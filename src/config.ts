@@ -64,7 +64,8 @@ export const PROMPTS_DIR = path.join(MSGRAG_DIR, "prompts");
 // you'd rather the app only create an empty prompts/ for you to fill yourself.
 export const SEED_PROMPTS_DIR = path.join(PROJECT_ROOT, "assets", "prompts");
 
-// Files that must sit next to the exes (checked for friendly errors in live mode).
+// Files that must sit inside msgragtest/ -- the GraphRAG project root the exes read
+// (checked for friendly errors in live mode).
 export const REQUIRED_SUPPORT_FILES = ["settings.yaml", ".env"];
 // An index counts as "ready" once output/ contains a file with this extension.
 export const READY_ARTIFACT_EXTENSION = ".parquet";

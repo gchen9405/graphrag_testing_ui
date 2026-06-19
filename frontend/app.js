@@ -40,6 +40,7 @@ let state = {
   indexRunning: false,
 };
 let ws = null;
+let graphFX = null;   // hero graph-field controller (set at boot) — lets the pipeline make the constellation react
 
 // ---------------------------------------------------------------------------
 // Status / environment
@@ -204,6 +205,7 @@ function renderFileList(files) {
     const btn = document.createElement("button");
     btn.className = "remove-btn";
     btn.title = "Remove";
+    btn.setAttribute("aria-label", "Remove " + f.name);
     btn.innerHTML = "&times;";
     btn.addEventListener("click", () => removeFile(f.name));
     li.append(name, size, btn);
@@ -233,7 +235,42 @@ function updateIndexButton() {
 // ---------------------------------------------------------------------------
 const logConsole = $("#logConsole");
 
+// --- indexing progress: a guaranteed-correct elapsed timer + a best-effort
+// phase label scraped from the log stream (GraphRAG prints its workflow names).
+let indexStart = 0, indexTick = 0, indexPhase = "";
+function startIndexProgress() {
+  indexStart = Date.now();
+  indexPhase = "";
+  const el = $("#indexProgress");
+  if (el) el.hidden = false;
+  logConsole.classList.add("is-live");      // blinking caret at the live log tail (#6)
+  renderIndexProgress();
+  clearInterval(indexTick);
+  indexTick = setInterval(renderIndexProgress, 1000);
+}
+function stopIndexProgress() {
+  clearInterval(indexTick); indexTick = 0;
+  const el = $("#indexProgress");
+  if (el) el.hidden = true;
+  logConsole.classList.remove("is-live");
+}
+function setIndexPhase(p) {
+  if (state.indexRunning && p && p !== indexPhase) { indexPhase = p; renderIndexProgress(); }
+}
+function renderIndexProgress() {
+  const el = $("#indexProgress");
+  if (!el || !indexStart) return;
+  const secs = Math.max(0, Math.round((Date.now() - indexStart) / 1000));
+  const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  el.textContent = indexPhase ? `${indexPhase} · ${mm}:${ss}` : `elapsed ${mm}:${ss}`;
+}
+
 function appendLogLine(line) {
+  if (state.indexRunning) {
+    const m = line.match(/\b(?:running\s+workflow|workflow|executing|phase)\b[:\s]+["']?([A-Za-z0-9_][\w .\-]{2,46})/i);
+    if (m) setIndexPhase(m[1].replace(/["'].*$/, "").trim());
+  }
   const span = document.createElement("span");
   let cls = "";
   if (/^\[runner\]/.test(line)) cls = "l-runner";
@@ -266,6 +303,8 @@ async function clearOutput() {
     const res = await api("/api/output/clear", { method: "POST" });
     state.indexReady = res.index_ready;
     setMsg($("#indexMsg"), "Output cleared.", "ok");
+    const statsEl = $("#indexStats");
+    if (statsEl) statsEl.hidden = true;
     if (!res.index_ready) lockQuery();
   } catch (err) {
     setMsg($("#indexMsg"), "Could not clear output: " + detailToText(err.detail), "err");
@@ -277,6 +316,8 @@ async function clearOutput() {
 async function runIndexing() {
   setMsg($("#indexMsg"), "", "");
   logConsole.innerHTML = "";
+  const statsEl = $("#indexStats");
+  if (statsEl) statsEl.hidden = true;
   $("#runIndexBtn").disabled = true;
 
   let started;
@@ -292,6 +333,8 @@ async function runIndexing() {
   state.indexRunning = true;
   setIndexBadge("running");
   setMsg($("#indexMsg"), `Indexing ${started.file_count} file(s)…`, "info");
+  startIndexProgress();
+  graphFX?.setBusy(true);
   openLogSocket();
 }
 
@@ -329,6 +372,8 @@ async function pollIndexStatus() {
 function onIndexFinished(data) {
   if (!state.indexRunning && $("#indexBadge").textContent === data.status) return;
   state.indexRunning = false;
+  stopIndexProgress();
+  graphFX?.setBusy(false);
   setIndexBadge(data.status);
   updateIndexButton();
 
@@ -336,11 +381,77 @@ function onIndexFinished(data) {
     setMsg($("#indexMsg"), "Indexing complete. You can query now.", "ok");
     state.indexReady = true;
     unlockQuery();
+    graphFX?.bloom();
+    showIndexStats();
   } else {
     const reason = data.error || (data.returncode != null ? `exit code ${data.returncode}` : "unknown error");
     setMsg($("#indexMsg"), "Indexing failed: " + reason, "err");
   }
   if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+}
+
+// ---------------------------------------------------------------------------
+// Post-index instrument readout — counts up the stats the backend can vouch for
+// (#4). Renders only fields that came back. The animated numbers are aria-hidden
+// and the final figures are announced once via an sr-only summary, so the count-up
+// never floods the #indexStats live region (same decoupling as the answer stream).
+// ---------------------------------------------------------------------------
+async function showIndexStats() {
+  const host = $("#indexStats");
+  if (!host) return;
+  let stats;
+  try { stats = await api("/api/index/stats"); } catch (_) { host.hidden = true; return; }
+
+  const cells = [];
+  const add = (v, label) => { if (typeof v === "number" && isFinite(v) && v >= 0) cells.push({ v, label }); };
+  add(stats.documents, "documents");
+  add(stats.entities, "entities");
+  add(stats.relationships, "relationships");
+  add(stats.communities, "communities");
+  if (!cells.length) { host.hidden = true; return; }
+
+  host.innerHTML = "";
+  const mkCell = (text, label, extraClass) => {
+    const cell = document.createElement("div");
+    cell.className = "stat-cell";
+    cell.setAttribute("aria-hidden", "true");   // visual only — the sr-only summary speaks
+    const val = document.createElement("span");
+    val.className = "stat-val" + (extraClass ? " " + extraClass : "");
+    val.textContent = text;
+    const lab = document.createElement("span");
+    lab.className = "stat-label";
+    lab.textContent = label;
+    cell.append(val, lab);
+    host.appendChild(cell);
+    return val;
+  };
+
+  for (const c of cells) countUp(mkCell("0", c.label), c.v, 950);
+
+  let timeStr = "";
+  if (indexStart) {
+    const secs = Math.max(1, Math.round((Date.now() - indexStart) / 1000));
+    timeStr = String(Math.floor(secs / 60)).padStart(2, "0") + ":" + String(secs % 60).padStart(2, "0");
+    mkCell(timeStr, "index time", "stat-time");
+  }
+
+  const sr = document.createElement("span");
+  sr.className = "sr-only";
+  sr.textContent = "Index complete: " + cells.map((c) => `${c.v} ${c.label}`).join(", ") +
+    (timeStr ? `, index time ${timeStr}` : "") + ".";
+  host.appendChild(sr);
+  host.hidden = false;
+}
+
+function countUp(el, target, dur) {
+  if (prefersReducedMotion() || target <= 0) { el.textContent = String(target); return; }
+  const t0 = performance.now();
+  (function frame() {
+    const t = Math.min(1, (performance.now() - t0) / dur);
+    el.textContent = String(Math.round((1 - Math.pow(1 - t, 3)) * target));
+    if (t < 1) requestAnimationFrame(frame);
+    else el.textContent = String(target);
+  })();
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +466,7 @@ function unlockQuery() {
 function lockQuery() {
   $("#card-query").classList.add("disabled");
   $("#queryHint").textContent = "Finish indexing to unlock querying.";
+  state.queryAnswered = false;     // a fresh index hasn't been queried yet
   syncPipeline();
 }
 
@@ -370,6 +482,9 @@ async function runQuery() {
   $("#queryBtn").disabled = true;
   setMsg($("#queryMsg"), "", "");
   const pending = renderPendingAnswer(query);
+  graphFX?.pulse();
+  graphFX?.setBusy(true);   // energize the field while the graph "thinks"
+  syncPipeline();           // light the query node as running (spins its ring)
 
   try {
     const res = await api("/api/query", {
@@ -378,12 +493,14 @@ async function runQuery() {
       body: JSON.stringify({ query }),
     });
     fillAnswer(pending, res);
-    if (res.ok) $("#queryInput").value = "";
+    if (res.ok) { $("#queryInput").value = ""; state.queryAnswered = true; }
   } catch (err) {
     fillAnswer(pending, { ok: false, query, error: detailToText(err.detail), raw_output: "" });
   } finally {
     state.queryInFlight = false;
     $("#queryBtn").disabled = false;
+    graphFX?.setBusy(false);
+    syncPipeline();          // settle the query node back to active
   }
 }
 
@@ -398,15 +515,39 @@ function renderPendingAnswer(query) {
   return card;
 }
 
+function prefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
+// Reveal `text` into `el` like the graph is speaking — a progressive char reveal
+// trailing a blinking periwinkle caret. The per-frame chunk scales with length so
+// total time stays ~capped (long answers don't crawl). Instant under reduced-motion.
+function streamAnswer(el, text, onDone) {
+  el.textContent = "";
+  if (!text || prefersReducedMotion()) { el.textContent = text || ""; if (onDone) onDone(); return; }
+
+  const textNode = document.createTextNode("");
+  const caret = document.createElement("span");
+  caret.className = "caret";
+  caret.setAttribute("aria-hidden", "true");
+  el.append(textNode, caret);
+
+  const perFrame = Math.max(1, Math.ceil(text.length / (1400 / 16)));   // ≈1.4s ceiling at 60fps
+  let i = 0;
+  (function tick() {
+    i = Math.min(text.length, i + perFrame);
+    textNode.nodeValue = text.slice(0, i);
+    if (i < text.length) requestAnimationFrame(tick);
+    else { caret.remove(); if (onDone) onDone(); }
+  })();
+}
+
 function fillAnswer(card, res) {
   card.classList.toggle("is-error", !res.ok);
   const body = card.querySelector(".a-body");
-  if (res.ok) {
-    body.textContent = res.answer || "(empty response)";
-  } else {
-    body.textContent = "Error: " + (res.error || "query failed");
-  }
-  if (res.raw_output) {
+
+  const appendRaw = () => {
+    if (!res.raw_output) return;
     const det = document.createElement("details");
     const sum = document.createElement("summary");
     sum.textContent = "raw output";
@@ -415,7 +556,32 @@ function fillAnswer(card, res) {
     pre.textContent = res.raw_output;
     det.append(sum, pre);
     card.appendChild(det);
+  };
+
+  if (!res.ok) {                       // errors appear at once — never stream a failure
+    body.textContent = "Error: " + (res.error || "query failed");
+    appendRaw();
+    return;
   }
+
+  const answer = res.answer || "(empty response)";
+  // Decouple the visual stream from the a11y announcement: hide the typing churn
+  // from screen readers (the #answers region is aria-live), and announce the full
+  // answer exactly once via a polite sr-only node.
+  card.classList.add("is-streaming");
+  body.setAttribute("aria-hidden", "true");
+  const sr = document.createElement("span");
+  sr.className = "sr-only";
+  sr.textContent = answer;
+  card.appendChild(sr);
+
+  flowSpark("node-query");   // signal shoots down the spine from the query node as the answer begins to stream
+  streamAnswer(body, answer, () => {
+    card.classList.remove("is-streaming");
+    body.removeAttribute("aria-hidden");
+    sr.remove();
+    appendRaw();
+  });
 }
 
 function escapeHtml(s) {
@@ -426,7 +592,7 @@ function escapeHtml(s) {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-(async function init() {
+async function boot() {
   try {
     const s = await refreshStatus();
     const js = await api("/api/index/status");
@@ -436,23 +602,107 @@ function escapeHtml(s) {
       logConsole.innerHTML = "";
       state.indexRunning = true;
       setIndexBadge("running");
+      startIndexProgress();
+      graphFX?.setBusy(true);
       openLogSocket();
     } else {
       (js.lines || []).forEach(appendLogLine);   // show the last run's log
       if (js.status && js.status !== "idle") setIndexBadge(js.status);
     }
   } catch (err) {
-    document.body.insertAdjacentHTML("afterbegin",
-      `<div class="msg err" style="padding:12px 24px">Could not reach backend: ${detailToText(err.detail)}</div>`);
+    showBootError(err.detail);
   }
-})();
+}
+
+// Styled, dismissible, retryable banner for a failed backend connection.
+// Built with textContent (not innerHTML) so server-provided detail stays inert.
+function showBootError(detail) {
+  document.querySelector(".boot-error")?.remove();
+  const bar = document.createElement("div");
+  bar.className = "boot-error";
+  bar.setAttribute("role", "alert");
+  const msg = document.createElement("span");
+  msg.className = "boot-error-msg";
+  msg.textContent = "Could not reach the backend — " + detailToText(detail);
+  const retry = document.createElement("button");
+  retry.className = "btn ghost";
+  retry.textContent = "Retry";
+  retry.addEventListener("click", () => { bar.remove(); boot(); });
+  const dismiss = document.createElement("button");
+  dismiss.className = "btn ghost";
+  dismiss.textContent = "Dismiss";
+  dismiss.addEventListener("click", () => bar.remove());
+  bar.append(msg, retry, dismiss);
+  document.body.prepend(bar);
+}
 
 // ---------------------------------------------------------------------------
 // Pipeline node markers (corpus → graph → query). Purely visual: reads the
 // existing state and lights each spine node. Never throws if markers are absent.
 // ---------------------------------------------------------------------------
+// When a node completes, a periwinkle "signal" travels down the spine to the next
+// node — reinforcing that an edge means active flow. Edge-triggered from the state
+// machine below; reused single element, animated with the Web Animations API.
+const NODE_FLOW = { "node-corpus": "node-graph", "node-graph": "node-query" };
+const prevNodeState = {};
+let spineSpark = null;
+
+// Send the signal from `fromId`'s node to `toId`'s node, OR — when `toId` is
+// omitted — downward from the node to the bottom of the spine (used by the query
+// step, which is the last station: the answer flows out the bottom).
+function flowSpark(fromId, toId) {
+  if (prefersReducedMotion()) return;
+  const from = document.getElementById(fromId);
+  const pipeline = document.querySelector(".pipeline");
+  if (!from || !pipeline) return;
+  const fr = from.getBoundingClientRect();
+  if (fr.height === 0) return;   // rail hidden (mobile) — no spine to travel
+  const pr = pipeline.getBoundingClientRect();
+
+  const x = fr.left + fr.width / 2 - pr.left;
+  const y0 = fr.top + fr.height / 2 - pr.top;
+  let y1;
+  if (toId) {
+    const to = document.getElementById(toId);
+    if (!to) return;
+    const tr = to.getBoundingClientRect();
+    if (tr.height === 0) return;
+    y1 = tr.top + tr.height / 2 - pr.top;     // to the next node
+  } else {
+    y1 = pr.height - 16;                       // down toward the bottom of the page
+  }
+
+  if (!spineSpark) {
+    spineSpark = document.createElement("div");
+    spineSpark.className = "spine-spark";
+    spineSpark.setAttribute("aria-hidden", "true");
+    pipeline.appendChild(spineSpark);
+  }
+  spineSpark.style.left = x + "px";
+  const dur = Math.round(Math.max(720, Math.min(1100, Math.abs(y1 - y0) * 1.5)));   // longer travel → longer flight
+
+  spineSpark.animate(
+    [
+      { transform: `translate(-50%, ${y0}px) scaleY(0.7)`, opacity: 0 },
+      { opacity: 1, offset: 0.2 },
+      { transform: `translate(-50%, ${(y0 + y1) / 2}px) scaleY(1.35)`, offset: 0.5 },
+      { opacity: 1, offset: 0.8 },
+      { transform: `translate(-50%, ${y1}px) scaleY(0.7)`, opacity: 0 },
+    ],
+    { duration: dur, easing: "cubic-bezier(0.4, 0, 0.2, 1)" }
+  );
+}
+
 function syncPipeline() {
-  const set = (id, s) => { const el = document.getElementById(id); if (el) el.dataset.state = s; };
+  const set = (id, s) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const prev = prevNodeState[id];
+    el.dataset.state = s;
+    prevNodeState[id] = s;
+    // fire only on a genuine transition into "done" (not on first paint / re-asserts)
+    if (s === "done" && prev && prev !== "done" && NODE_FLOW[id]) flowSpark(id, NODE_FLOW[id]);
+  };
   const filesReady = (state.fileCount || 0) > 0;
 
   set("node-corpus", filesReady ? "done" : "active");
@@ -465,23 +715,40 @@ function syncPipeline() {
   else set("node-graph", filesReady ? "active" : "locked");
 
   const q = document.getElementById("card-query");
-  set("node-query", q && !q.classList.contains("disabled") ? "active" : "locked");
+  const queryLocked = !q || q.classList.contains("disabled");
+  if (state.queryInFlight) set("node-query", "running");           // "thinking" while a query is in flight
+  else if (queryLocked) set("node-query", "locked");
+  else if (state.queryAnswered) set("node-query", "done");         // amber once a query has been answered (like the index node)
+  else set("node-query", "active");
 }
 
 // ---------------------------------------------------------------------------
 // Ambient knowledge-graph field behind the hero — drifting amber nodes joined
-// by faint periwinkle edges. Static single frame under reduced-motion.
+// by faint periwinkle edges. It reacts to real pipeline state: the cursor pulls
+// nearby nodes (magnetism), indexing "energizes" the field, a successful index
+// blooms an amber ring outward, and each query sends a periwinkle pulse.
+// Static single frame + no reactions under reduced-motion.
 // ---------------------------------------------------------------------------
 function initGraphField() {
   const canvas = document.getElementById("graphField");
-  if (!canvas) return;
+  if (!canvas) return null;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) return null;
 
   const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const finePointer = window.matchMedia && window.matchMedia("(pointer: fine)").matches;
+  const interactive = !reduce && finePointer;     // magnetism only with a real pointer + motion allowed
+
   const NODE = "245, 195, 107";   // amber (entities)
   const EDGE = "138, 169, 255";   // periwinkle (relationships)
+  const PULL = 168;               // cursor magnetism radius (px)
+  const now = () => (typeof performance !== "undefined" && performance.now) ? performance.now() : 0;
+
   let w = 0, h = 0, nodes = [], linkDist = 130, raf = 0, resizeTimer = 0;
+  let energy = 0, targetEnergy = 0;               // 0..1 "thinking" intensity (ramps while indexing)
+  let energyHold = 0;                             // timer id for the bloom's energy spike
+  let ripples = [];                               // expanding rings: {x,y,hue,start,dur,maxR}
+  const pointer = { x: 0, y: 0, active: false };
 
   function build() {
     const host = canvas.parentElement;
@@ -508,15 +775,35 @@ function initGraphField() {
     }
   }
 
+  // Display position = true position + an elastic shove toward the cursor. It's
+  // render-only (never written back to the node), so the field springs back on
+  // its own when the pointer moves away — no clumping, no runaway velocity.
+  function placed(n) {
+    if (!interactive || !pointer.active) return { x: n.x, y: n.y, pull: 0 };
+    const dx = pointer.x - n.x, dy = pointer.y - n.y;
+    const d = Math.hypot(dx, dy);
+    if (d >= PULL || d < 0.01) return { x: n.x, y: n.y, pull: 0 };
+    const pull = 1 - d / PULL;                    // 0..1, stronger near the cursor
+    const shove = pull * pull * 24;               // eased, up to ~24px
+    return { x: n.x + (dx / d) * shove, y: n.y + (dy / d) * shove, pull };
+  }
+
   function draw() {
+    const t0 = now();
     ctx.clearRect(0, 0, w, h);
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
+
+    const P = nodes.map(placed);
+    const edgeBoost = 1 + energy * 0.9;
+
+    // edges between nodes
+    for (let i = 0; i < P.length; i++) {
+      for (let j = i + 1; j < P.length; j++) {
+        const a = P[i], b = P[j];
         const dx = a.x - b.x, dy = a.y - b.y;
         const d = Math.sqrt(dx * dx + dy * dy);
         if (d < linkDist) {
-          ctx.strokeStyle = `rgba(${EDGE}, ${((1 - d / linkDist) * 0.22).toFixed(3)})`;
+          const al = Math.min(0.5, (1 - d / linkDist) * 0.22 * edgeBoost);
+          ctx.strokeStyle = `rgba(${EDGE}, ${al.toFixed(3)})`;
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
@@ -525,25 +812,65 @@ function initGraphField() {
         }
       }
     }
-    for (const n of nodes) {
-      ctx.shadowBlur = n.bright ? 9 : 0;
+
+    // edges reaching from the cursor to the nodes it's pulling
+    if (interactive && pointer.active) {
+      for (const p of P) {
+        if (p.pull > 0) {
+          ctx.strokeStyle = `rgba(${EDGE}, ${(p.pull * 0.4).toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pointer.x, pointer.y);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // nodes
+    for (let i = 0; i < P.length; i++) {
+      const n = nodes[i], p = P[i];
+      const lit = n.bright || p.pull > 0.4 || energy > 0.5;
+      ctx.shadowBlur = lit ? 9 + p.pull * 8 : 0;
       ctx.shadowColor = `rgba(${NODE}, 0.9)`;
-      ctx.fillStyle = n.bright ? `rgb(${NODE})` : `rgba(${NODE}, 0.5)`;
+      const a = Math.min(1, (n.bright ? 1 : 0.5) + p.pull * 0.5 + energy * 0.25);
+      ctx.fillStyle = `rgba(${NODE}, ${a.toFixed(3)})`;
       ctx.beginPath();
-      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, n.r + p.pull * 1.2, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.shadowBlur = 0;
+
+    // expanding rings — index-success bloom (amber) / query pulse (periwinkle)
+    for (const rp of ripples) {
+      const t = Math.min(1, (t0 - rp.start) / rp.dur);
+      const ease = 1 - Math.pow(1 - t, 3);        // ease-out
+      const al = (1 - t) * 0.45;
+      ctx.strokeStyle = `rgba(${rp.hue === "edge" ? EDGE : NODE}, ${al.toFixed(3)})`;
+      ctx.lineWidth = (1 - t) * 2.5 + 0.4;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, ease * rp.maxR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   function step() {
+    const t0 = now();
+    energy += (targetEnergy - energy) * 0.05;     // smooth ramp toward target
     for (const n of nodes) {
-      n.x += n.vx; n.y += n.vy;
+      const sp = 1 + energy * 0.8;                // drift faster while "thinking"
+      n.x += n.vx * sp; n.y += n.vy * sp;
       if (n.x < 0 || n.x > w) n.vx *= -1;
       if (n.y < 0 || n.y > h) n.vy *= -1;
     }
+    if (ripples.length) ripples = ripples.filter((rp) => t0 - rp.start < rp.dur);
     draw();
     raf = requestAnimationFrame(step);
+  }
+
+  function spawnRipple(hue, dur, maxR) {
+    ripples.push({ x: w / 2, y: h * 0.46, hue, dur, maxR, start: now() });
+    if (ripples.length > 6) ripples.shift();
   }
 
   function start() {
@@ -553,10 +880,43 @@ function initGraphField() {
     if (!reduce) raf = requestAnimationFrame(step);
   }
 
+  if (interactive) {
+    const host = canvas.parentElement;
+    host.addEventListener("pointermove", (e) => {
+      const rect = host.getBoundingClientRect();
+      pointer.x = e.clientX - rect.left;
+      pointer.y = e.clientY - rect.top;
+      pointer.active = true;
+    }, { passive: true });
+    host.addEventListener("pointerleave", () => { pointer.active = false; }, { passive: true });
+  }
+
   start();
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(start, 200); });
   window.addEventListener("load", () => setTimeout(start, 60)); // re-fit once webfonts settle the hero height
+
+  // Hooks the pipeline calls so the constellation reflects real state.
+  return {
+    setBusy(on) {
+      if (reduce) return;
+      clearTimeout(energyHold);
+      targetEnergy = on ? 0.85 : 0;
+    },
+    bloom() {
+      if (reduce) return;
+      spawnRipple("node", 1150, Math.hypot(w, h) * 0.62);
+      spawnRipple("node", 1550, Math.hypot(w, h) * 0.84);   // a second, slower ring for depth
+      targetEnergy = 1;
+      clearTimeout(energyHold);
+      energyHold = setTimeout(() => { targetEnergy = 0; }, 650);
+    },
+    pulse() {
+      if (reduce) return;
+      spawnRipple("edge", 900, Math.hypot(w, h) * 0.42);
+    },
+  };
 }
 
-initGraphField();
+graphFX = initGraphField();
+boot();
 

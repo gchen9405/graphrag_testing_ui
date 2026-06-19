@@ -37,6 +37,15 @@ export interface QueryResult {
   error: string | null;
 }
 
+export interface IndexStats {
+  ready: boolean;
+  documents: number | null;
+  artifacts: number | null;
+  entities: number | null;
+  relationships: number | null;
+  communities: number | null;
+}
+
 // -----------------------------------------------------------------------------
 // Small fs type-guards
 // -----------------------------------------------------------------------------
@@ -221,7 +230,7 @@ export function clearStaging(): void {
 export function supportFilesStatus(): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const name of config.REQUIRED_SUPPORT_FILES) {
-    out[name] = isFile(path.join(config.BASE_DIR, name));
+    out[name] = isFile(path.join(config.MSGRAG_DIR, name));
   }
   return out;
 }
@@ -258,7 +267,7 @@ export function preflightIndex(): string[] {
   if (!isDir(config.BASE_DIR)) problems.push(`BASE_DIR does not exist: ${config.BASE_DIR}`);
   if (!isFile(config.INDEXER_EXE)) problems.push(`Indexer executable not found: ${config.INDEXER_EXE}`);
   for (const [name, present] of Object.entries(supportFilesStatus())) {
-    if (!present) problems.push(`Missing required file next to the executables: ${name}`);
+    if (!present) problems.push(`Missing required file in ${config.MSGRAG_DIR}: ${name}`);
   }
   if (!hasPrompts()) {
     problems.push(`Prompts folder missing or empty: ${config.PROMPTS_DIR} (the indexer needs prompt files here).`);
@@ -274,7 +283,7 @@ export function preflightQuery(): string[] {
   if (config.USE_MOCK) return problems;
   if (!isFile(config.QUERIER_EXE)) problems.push(`Querier executable not found: ${config.QUERIER_EXE}`);
   for (const [name, present] of Object.entries(supportFilesStatus())) {
-    if (!present) problems.push(`Missing required file next to the executables: ${name}`);
+    if (!present) problems.push(`Missing required file in ${config.MSGRAG_DIR}: ${name}`);
   }
   return problems;
 }
@@ -644,6 +653,12 @@ function writeMockArtifacts(fileCount: number): void {
     mock: true,
     generated_at: new Date().toISOString(),
     input_files: fileCount,
+    num_documents: fileCount,
+    // Plausible derived counts so the post-index count-up has data to show in mock
+    // mode (everything here is fake -- the hero shows a MOCK MODE badge).
+    entities: fileCount * 23 + 11,
+    relationships: fileCount * 37 + 5,
+    communities: Math.max(1, Math.round(fileCount * 1.8)),
     artifacts: artifactNames,
   };
   fs.writeFileSync(path.join(config.OUTPUT_DIR, "stats.json"), JSON.stringify(stats, null, 2));
@@ -772,4 +787,47 @@ export function statusSnapshot(): Record<string, unknown> {
     index_ready: hasArtifacts(),
     index_running: manager.isRunning,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Best-effort numeric summary of the finished index, for the UI count-up (#4).
+// Truthful + partial: counts what's cheap to know (input docs, output files) and
+// passes through entity/relationship/community counts only when stats.json carries
+// them. Real GraphRAG .parquet row-counts are NOT parsed (no parquet dependency),
+// so those stay null in live mode until that's wired; mock mode writes them.
+// -----------------------------------------------------------------------------
+export function indexStats(): IndexStats {
+  const out: IndexStats = {
+    ready: hasArtifacts(),
+    documents: null,
+    artifacts: null,
+    entities: null,
+    relationships: null,
+    communities: null,
+  };
+  try {
+    out.documents = fs.readdirSync(config.INPUT_DIR).filter(isTxt).length;
+  } catch {
+    /* no input dir yet */
+  }
+  try {
+    out.artifacts = fs
+      .readdirSync(config.OUTPUT_DIR)
+      .filter((e) => !e.startsWith(".") && isFile(path.join(config.OUTPUT_DIR, e))).length;
+  } catch {
+    /* no output dir yet */
+  }
+  try {
+    const s = JSON.parse(
+      fs.readFileSync(path.join(config.OUTPUT_DIR, "stats.json"), "utf-8")
+    ) as Record<string, unknown>;
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    out.entities = num(s.entities);
+    out.relationships = num(s.relationships);
+    out.communities = num(s.communities);
+    if (out.documents == null) out.documents = num(s.num_documents) ?? num(s.input_files);
+  } catch {
+    /* no/unreadable stats.json */
+  }
+  return out;
 }
