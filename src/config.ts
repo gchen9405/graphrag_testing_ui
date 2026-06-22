@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
@@ -49,11 +50,42 @@ export const BASE_DIR: string = path.resolve(
   expandUser(process.env.GRAPHRAG_BASE_DIR ?? path.join(APP_DIR, "graphrag_runtime"))
 );
 
-// Executable file names (inside BASE_DIR).
+// Executable file names.
 export const INDEXER_EXE_NAME = "graphrag_pipeline.exe";
 export const QUERIER_EXE_NAME = "graphrag_querying.exe";
-export const INDEXER_EXE = path.join(BASE_DIR, INDEXER_EXE_NAME);
-export const QUERIER_EXE = path.join(BASE_DIR, QUERIER_EXE_NAME);
+
+// Locate each exe. The exes are PyInstaller *onedir* builds: a .exe is NOT
+// self-contained -- it must sit beside its own _internal/ folder (the bundled
+// python3XX.dll etc.), found relative to the exe's own location. So the two
+// bundles live in SEPARATE subfolders of BASE_DIR (otherwise their _internal/
+// folders would collide). The subfolder is named after the exe's stem, which is
+// exactly PyInstaller's dist/<name>/ output -- so you just copy your two dist
+// folders into BASE_DIR as-is:
+//
+//   <BASE_DIR>\graphrag_pipeline\graphrag_pipeline.exe  + _internal\
+//   <BASE_DIR>\graphrag_querying\graphrag_querying.exe  + _internal\
+//
+// cwd is still BASE_DIR at launch (see runner.spawnOptions), so the exes'
+// hard-coded relative msgragtest\ path resolves no matter where the .exe lives.
+// A flat .exe directly in BASE_DIR (e.g. a future --onefile build) is accepted
+// as a fallback, so the old self-contained layout keeps working too.
+function fileExists(p: string): boolean {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+function resolveExe(name: string): string {
+  const stem = path.basename(name, path.extname(name)); // graphrag_pipeline.exe -> graphrag_pipeline
+  const inSubdir = path.join(BASE_DIR, stem, name); // onedir bundle (preferred)
+  const flat = path.join(BASE_DIR, name); // self-contained .exe (fallback)
+  if (fileExists(inSubdir)) return inSubdir;
+  if (fileExists(flat)) return flat;
+  return inSubdir; // neither present yet: report the onedir path in errors
+}
+export const INDEXER_EXE = resolveExe(INDEXER_EXE_NAME);
+export const QUERIER_EXE = resolveExe(QUERIER_EXE_NAME);
 
 // The two commands. Each array item is ONE argv token; spawn runs without a
 // shell, so a query containing spaces is passed safely as a single argument

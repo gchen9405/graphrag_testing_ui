@@ -27,6 +27,9 @@ flow on any OS *without* the real executables, then flip one flag to go live.
 - The two executables (only needed for **live** mode):
   - `graphrag_pipeline.exe` (indexing)
   - `graphrag_querying.exe` (querying)
+  - These are PyInstaller **onedir** builds: each `.exe` ships with an `_internal\`
+    folder it can't run without — copy the whole `dist\<name>\` folder, not just the
+    `.exe`. See the folder layout in §3.
   - plus their existing `settings.yaml` and `.env`, placed **inside `msgragtest\`**
     (the GraphRAG project root) — not next to the exes.
 
@@ -73,8 +76,12 @@ Other scripts:
 
 ```
 <BASE_DIR>\                       e.g. C:\graphrag
-├── graphrag_pipeline.exe         ┐ you place these 2 exes here
-├── graphrag_querying.exe         ┘
+├── graphrag_pipeline\            ┐ copy your two PyInstaller dist\ folders here
+│   ├── graphrag_pipeline.exe     │   (each onedir .exe + its _internal\ together)
+│   └── _internal\                │
+├── graphrag_querying\            │
+│   ├── graphrag_querying.exe     │
+│   └── _internal\                ┘
 └── msgragtest\                   ← created by the app on startup
     ├── settings.yaml             ┐ you place these 2 files inside msgragtest\
     ├── .env                      ┘
@@ -85,13 +92,21 @@ Other scripts:
     └── output\                   ← created by the app; indexer writes artifacts here
 ```
 
-You place **4 files**: the **2 exes** in `<BASE_DIR>\`, and `settings.yaml` + `.env`
-**inside `msgragtest\`** (the GraphRAG project root the exes read). The app creates
-`msgragtest\` with `input\`, `output\`, and a seeded `prompts\` on startup — so run the
-app once to scaffold it, then drop the two config files in. On each run it rebuilds only
-`input\` from your staged corpus; **`output\` is preserved** (so a long index is never
-lost by starting a run — wipe it only with the **Clear output** button), and **`prompts\`
-(and anything else under `msgragtest\`) is left untouched.**
+These exes are PyInstaller **onedir** builds, so each `.exe` is **not** self-contained —
+it must sit next to its own `_internal\` folder (the bundled `python3XX.dll` etc.).
+PyInstaller already emits each as `dist\<name>\<name>.exe` + `dist\<name>\_internal\`, so
+just **copy those two `dist\` folders into `<BASE_DIR>\` whole** — keep each `.exe` paired
+with its `_internal\`, and don't merge the two `_internal\` folders together. The app
+looks for each exe in a subfolder named after it (`graphrag_pipeline\`, `graphrag_querying\`);
+a flat self-contained `.exe` placed directly in `<BASE_DIR>\` (e.g. a `--onefile` build)
+also works as a fallback.
+
+Then place `settings.yaml` + `.env` **inside `msgragtest\`** (the GraphRAG project root
+the exes read). The app creates `msgragtest\` with `input\`, `output\`, and a seeded
+`prompts\` on startup — so run the app once to scaffold it, then drop the two config files
+in. On each run it rebuilds only `input\` from your staged corpus; **`output\` is preserved**
+(so a long index is never lost by starting a run — wipe it only with the **Clear output**
+button), and **`prompts\` (and anything else under `msgragtest\`) is left untouched.**
 
 The app launches each executable with its working directory set to `BASE_DIR`, so
 the exe's hard-coded relative `msgragtest\` path resolves correctly. **No copying or
