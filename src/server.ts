@@ -122,6 +122,16 @@ app.post("/api/index/start", (_req: Request, res: Response) => {
     httpError(res, 400, { problems });
     return;
   }
+  // Clean slate: wipe the previous run's artifacts before starting, so each index is
+  // a fresh build rather than an overwrite on top of stale output. A failure here
+  // means a file is locked (a previous querier/AV/Windows Search still holds it) --
+  // surface clearOutput()'s descriptive message rather than starting on dirty output.
+  try {
+    runner.clearOutput();
+  } catch (e) {
+    httpError(res, 500, (e as Error).message);
+    return;
+  }
   let fileCount: number;
   try {
     fileCount = runner.prepareRunDirs();

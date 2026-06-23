@@ -440,11 +440,12 @@ export function ensureExeProjectLinks(): void {
 }
 
 /** Rebuild input/ from the currently-staged corpus, then return the file count.
- *  output/ is deliberately LEFT INTACT -- a long index is never thrown away by
- *  starting a run; clear it explicitly with clearOutput(). */
+ *  Only input/ is (re)built here; output/ is wiped separately by the index-start
+ *  flow (server /api/index/start calls clearOutput() first) so each run is a clean
+ *  build. This function just makes sure output/ exists. */
 export function prepareRunDirs(): number {
   fs.mkdirSync(config.INPUT_DIR, { recursive: true });
-  fs.mkdirSync(config.OUTPUT_DIR, { recursive: true }); // ensure it exists; do NOT clear it
+  fs.mkdirSync(config.OUTPUT_DIR, { recursive: true }); // ensure it exists (clearOutput already emptied it)
 
   // Only input/ is rebuilt each run so it matches the staged corpus. (It's cheap
   // and fully reconstructable, unlike the expensive output/ artifacts.)

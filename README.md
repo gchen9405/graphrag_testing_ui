@@ -104,9 +104,11 @@ also works as a fallback.
 Then place `settings.yaml` + `.env` **inside `msgragtest\`** (the GraphRAG project root
 the exes read). The app creates `msgragtest\` with `input\`, `output\`, and a seeded
 `prompts\` on startup — so run the app once to scaffold it, then drop the two config files
-in. On each run it rebuilds only `input\` from your staged corpus; **`output\` is preserved**
-(so a long index is never lost by starting a run — wipe it only with the **Clear output**
-button), and **`prompts\` (and anything else under `msgragtest\`) is left untouched.**
+in. On each run it rebuilds `input\` from your staged corpus **and wipes `output\` for a
+clean build** — so every index starts fresh instead of overwriting stale artifacts (note
+a failed run therefore leaves no index until the next successful one). The **Clear output**
+button does the same wipe on demand. **`prompts\` (and anything else under `msgragtest\`)
+is left untouched.**
 
 Each exe resolves its `msgragtest` project root **relative to its own location**, not
 to the working directory. In the onedir layout that means each exe looks for
@@ -160,11 +162,11 @@ Listed in rough order of how likely you are to touch them:
   validation, a per-file size cap, and filenames sanitized (path-traversal +
   Windows reserved-name safe), staged under `uploads/` (not yet in `msgragtest`).
   List/remove via `GET`/`DELETE /api/files`.
-- **Index** (`POST /api/index/start`): pre-flight checks → rebuilds `msgragtest\input\`
-  from the staged corpus → `spawn`s the indexer. It does **not** touch
-  `msgragtest\output\`, so an in-progress or completed index is never wiped just by
-  starting a run. Merged stdout/stderr is streamed over **WebSocket `/ws/index`**; the
-  log is also buffered so a reconnecting/late browser gets a full replay then resumes live.
+- **Index** (`POST /api/index/start`): pre-flight checks → **wipes `msgragtest\output\`**
+  → rebuilds `msgragtest\input\` from the staged corpus → `spawn`s the indexer, so every
+  index is a clean build (the previous run's artifacts and on-screen answers are cleared).
+  Merged stdout/stderr is streamed over **WebSocket `/ws/index`**; the log is also buffered
+  so a reconnecting/late browser gets a full replay then resumes live.
 - **Clear output** (`POST /api/output/clear`): explicit, destructive — wipes
   `msgragtest\output\` for a fresh index. Confirmed in the UI and blocked while a run
   is in progress.

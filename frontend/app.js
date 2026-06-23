@@ -303,6 +303,10 @@ async function clearOutput() {
     const res = await api("/api/output/clear", { method: "POST" });
     state.indexReady = res.index_ready;
     setMsg($("#indexMsg"), "Output cleared.", "ok");
+    // The displayed answers belonged to the index we just deleted -- drop them so
+    // stale results don't linger next to a now-empty output.
+    $("#answers").innerHTML = "";
+    setMsg($("#queryMsg"), "", "");
     const statsEl = $("#indexStats");
     if (statsEl) statsEl.hidden = true;
     if (!res.index_ready) lockQuery();
@@ -329,6 +333,13 @@ async function runIndexing() {
     updateIndexButton();
     return;
   }
+
+  // The server just wiped the previous index's output, so drop that run's answers
+  // and re-lock querying until this run finishes (the screen matches the artifacts).
+  $("#answers").innerHTML = "";
+  setMsg($("#queryMsg"), "", "");
+  state.indexReady = false;
+  lockQuery();
 
   state.indexRunning = true;
   setIndexBadge("running");

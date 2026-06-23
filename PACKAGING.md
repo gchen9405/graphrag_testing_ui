@@ -29,8 +29,10 @@ shipped **loose** next to the exe and read off disk.
 - Windows + admin (to install Bun)
 - [Bun](https://bun.sh) — `npm i -g bun`, or the standalone installer
 - Git access to this repo
-- The four runtime files, already on this machine:
-  - `graphrag_pipeline.exe`, `graphrag_querying.exe`
+- The runtime pieces, already on this machine:
+  - the two GraphRAG **onedir bundles** — PyInstaller's `dist\graphrag_pipeline\`
+    and `dist\graphrag_querying\` folders (each = its `.exe` **plus** its `_internal\`),
+    not the bare `.exe` files
   - `settings.yaml`, `.env`
 
 ---
@@ -43,14 +45,15 @@ git clone https://github.com/gchen9405/graphrag_testing_ui.git
 cd graphrag_testing_ui
 bun install
 
-# 2. Put the four runtime files in place (creates the folders if needed)
-#    - the two exes go directly in graphrag_runtime\
+# 2. Put the runtime pieces in place (creates the folders if needed)
+#    - each onedir bundle goes in its OWN subfolder of graphrag_runtime\
+#      (keep each .exe paired with its _internal\; do NOT merge the two _internal\)
 #    - settings.yaml + .env go in graphrag_runtime\msgragtest\
 mkdir graphrag_runtime\msgragtest -Force
-copy <path>\graphrag_pipeline.exe   graphrag_runtime\
-copy <path>\graphrag_querying.exe   graphrag_runtime\
-copy <path>\settings.yaml           graphrag_runtime\msgragtest\
-copy <path>\.env                    graphrag_runtime\msgragtest\
+xcopy /E /I <path>\dist\graphrag_pipeline  graphrag_runtime\graphrag_pipeline
+xcopy /E /I <path>\dist\graphrag_querying  graphrag_runtime\graphrag_querying
+copy  <path>\settings.yaml                 graphrag_runtime\msgragtest\
+copy  <path>\.env                          graphrag_runtime\msgragtest\
 ```
 
 ```powershell
@@ -78,7 +81,15 @@ Copy-Item graphrag-ui.exe $ship
 Copy-Item -Recurse -Force frontend "$ship\frontend"
 New-Item -ItemType Directory -Force -Path "$ship\assets" | Out-Null
 Copy-Item -Recurse -Force assets\prompts "$ship\assets\prompts"
-Copy-Item -Recurse -Force graphrag_runtime "$ship\graphrag_runtime"
+
+# Copy graphrag_runtime with robocopy /XJ (EXCLUDE junction points). After the
+# live test in step 3 the app has created a msgragtest junction inside each exe
+# folder; plain Copy-Item -Recurse FOLLOWS those junctions and would bake a stale
+# copy of msgragtest into each exe folder, which the app then refuses to overwrite
+# at the user's end (it re-creates its own junctions at runtime). /XJ keeps the
+# junctions out of the zip; the app rebuilds them on the user's first launch.
+robocopy graphrag_runtime "$ship\graphrag_runtime" /E /XJ | Out-Null
+New-Item -ItemType Directory -Force -Path "$ship\graphrag_runtime\msgragtest" | Out-Null
 
 # drop the dev corpus + any mock/test artifacts from the shipped copy:
 Remove-Item -Recurse -Force "$ship\graphrag_runtime\msgragtest\input\*"  -ErrorAction SilentlyContinue
@@ -104,17 +115,23 @@ GraphRAG-UI\
 ├── assets\
 │   └── prompts\                 ← prompt seed templates
 └── graphrag_runtime\
-    ├── graphrag_pipeline.exe
-    ├── graphrag_querying.exe
+    ├── graphrag_pipeline\        ┐ onedir bundles (each .exe + its _internal\)
+    │   ├── graphrag_pipeline.exe │
+    │   └── _internal\            │
+    ├── graphrag_querying\        │
+    │   ├── graphrag_querying.exe │
+    │   └── _internal\            ┘
     └── msgragtest\
         ├── settings.yaml
         ├── .env
-        └── (input\, output\, prompts\ are created on first launch)
+        └── (input\, output\, prompts\ created on first launch; the app also
+             junctions a msgragtest into each exe folder on first launch — §3 / README §3)
 ```
 
 ## Pre-zip checklist
 
 - [ ] `graphrag_runtime\msgragtest\input\` and `output\` are empty (no dev corpus / mock artifacts)
+- [ ] each exe folder (`graphrag_pipeline\`, `graphrag_querying\`) has its `.exe` + `_internal\` and **no real `msgragtest\` inside it** (the `/XJ` copy keeps the runtime junctions out of the zip; the app re-creates them on first launch)
 - [ ] `settings.yaml` + `.env` are in `msgragtest\` (not next to the exes)
 - [ ] you ran a real index + query against the assembled exe and it worked
 - [ ] `settings.yaml` / `.env` contents are what you intend to share (the API key ships in `.env`)
