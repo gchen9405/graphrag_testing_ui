@@ -200,9 +200,17 @@ export function saveUploadedFile(filename: string, data: Buffer): StagedFile {
 }
 
 export function removeStagedFile(name: string): boolean {
-  const safe = sanitizeFilename(name);
+  // Strip any directory part (both separators, platform-independent) as the
+  // traversal guard -- but do NOT re-run sanitizeFilename here. A de-duplicated
+  // staged name like "report (2).txt" would be rewritten to "report _2_.txt"
+  // (parentheses aren't in the safe set), which no longer matches the file on
+  // disk, so the delete would 404 and the file could never be x'd out. Staged
+  // names are already sanitized at upload time, so basename + the escape check
+  // and the within-staging isFile() check below are sufficient.
+  const base = name.replace(/\\/g, "/").split("/").pop() ?? "";
+  if (!base || base === "." || base === "..") return false;
   const root = path.resolve(config.STAGING_DIR);
-  const target = path.resolve(root, safe);
+  const target = path.resolve(root, base);
   const rel = path.relative(root, target);
   if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) return false; // escape guard
   if (isFile(target)) {
@@ -358,6 +366,76 @@ export function ensureScaffold(): void {
     }
   } catch (e) {
     console.error(`[scaffold] could not prepare ${config.MSGRAG_DIR}: ${(e as Error).message}`);
+  }
+}
+
+/** Point each exe's *own-folder* `msgragtest` at the one real shared project.
+ *
+ *  The GraphRAG exes resolve their `msgragtest` project root RELATIVE TO THE
+ *  EXECUTABLE'S OWN LOCATION, not the working directory we launch them with. With
+ *  the old --onefile build the exe sat directly in BASE_DIR, so "next to the exe"
+ *  and BASE_DIR/msgragtest were the same folder and it worked by coincidence. The
+ *  --onedir build moves each exe down into its own bundle subfolder
+ *  (BASE_DIR/graphrag_pipeline/, BASE_DIR/graphrag_querying/), so each exe now
+ *  looks for BASE_DIR/<exe>/msgragtest -- which doesn't exist -- and dies with
+ *  "Invalid config path: ...msgragtest is not a directory".
+ *
+ *  Both exes must share ONE msgragtest (the indexer writes output/, the querier
+ *  reads it), so we can't just give each its own copy. Instead we create a Windows
+ *  directory junction inside each exe's folder pointing at the real shared
+ *  BASE_DIR/msgragtest. Junctions need no admin rights. Idempotent, best-effort:
+ *  logs and continues on any error so startup is never blocked. */
+export function ensureExeProjectLinks(): void {
+  if (config.USE_MOCK) return; // mock mode never launches the real exes
+  const base = path.resolve(config.BASE_DIR);
+  const realMsgrag = path.resolve(config.MSGRAG_DIR);
+
+  for (const exe of [config.INDEXER_EXE, config.QUERIER_EXE]) {
+    try {
+      const exeDir = path.resolve(path.dirname(exe));
+      // Flat (--onefile) layout: the exe is in BASE_DIR, so its sibling msgragtest
+      // already IS the real one -- nothing to link.
+      if (exeDir === base) continue;
+      // Exe folder absent (exe missing / unexpected layout): nothing to link.
+      if (!isDir(exeDir)) continue;
+
+      const link = path.join(exeDir, "msgragtest");
+      let st: fs.Stats | undefined;
+      try {
+        st = fs.lstatSync(link);
+      } catch {
+        /* nothing there yet */
+      }
+
+      if (st?.isSymbolicLink()) {
+        // Already a link: keep it if it still resolves to the real msgragtest,
+        // otherwise replace a stale one. Resolve BOTH sides with realpathSync so
+        // symlinked path components (e.g. /var -> /private/var), Windows 8.3 short
+        // names, or drive-letter casing don't cause a spurious mismatch.
+        let good = false;
+        try {
+          good = fs.realpathSync(link) === fs.realpathSync(realMsgrag);
+        } catch {
+          /* broken link */
+        }
+        if (good) continue;
+        fs.rmSync(link, { recursive: true, force: true });
+      } else if (st) {
+        // A REAL folder sits where the link should go -- don't clobber it; the exe
+        // will read that folder instead of the shared one, so warn loudly.
+        console.error(
+          `[scaffold] ${link} already exists as a real folder, so the indexer/querier ` +
+            `won't see the shared corpus/output in ${realMsgrag}. Remove it (or move its ` +
+            `contents into ${realMsgrag}) so a junction can be created.`
+        );
+        continue;
+      }
+
+      fs.symlinkSync(realMsgrag, link, "junction");
+      console.log(`[scaffold] linked ${link} -> ${realMsgrag} (onedir msgragtest junction).`);
+    } catch (e) {
+      console.error(`[scaffold] could not link msgragtest for ${exe}: ${(e as Error).message}`);
+    }
   }
 }
 

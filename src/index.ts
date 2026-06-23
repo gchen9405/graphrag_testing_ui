@@ -10,7 +10,8 @@ function main(): void {
   process.on("unhandledRejection", (reason) => console.error("[unhandledRejection]", reason));
   process.on("uncaughtException", (err) => console.error("[uncaughtException]", err));
 
-  runner.ensureScaffold();   // create msgragtest/{input,output,prompts} + seed prompts
+  runner.ensureScaffold();        // create msgragtest/{input,output,prompts} + seed prompts
+  runner.ensureExeProjectLinks(); // onedir: junction each exe-folder msgragtest -> the shared one
 
   const server = http.createServer(app);
   attachWebSocket(server);

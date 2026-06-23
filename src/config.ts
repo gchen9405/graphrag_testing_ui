@@ -65,10 +65,13 @@ export const QUERIER_EXE_NAME = "graphrag_querying.exe";
 //   <BASE_DIR>\graphrag_pipeline\graphrag_pipeline.exe  + _internal\
 //   <BASE_DIR>\graphrag_querying\graphrag_querying.exe  + _internal\
 //
-// cwd is still BASE_DIR at launch (see runner.spawnOptions), so the exes'
-// hard-coded relative msgragtest\ path resolves no matter where the .exe lives.
-// A flat .exe directly in BASE_DIR (e.g. a future --onefile build) is accepted
-// as a fallback, so the old self-contained layout keeps working too.
+// Each exe resolves its msgragtest project root RELATIVE TO ITS OWN LOCATION (not
+// cwd), so in this onedir layout it would look for <BASE_DIR>\<exe>\msgragtest and
+// fail. runner.ensureExeProjectLinks() fixes that at startup by junctioning each
+// exe-folder's msgragtest to the single shared <BASE_DIR>\msgragtest.
+// A flat .exe directly in BASE_DIR (e.g. a --onefile build) is accepted as a
+// fallback -- there the exe is its own neighbor to msgragtest, so no junction is
+// needed and the old self-contained layout keeps working too.
 function fileExists(p: string): boolean {
   try {
     return fs.statSync(p).isFile();

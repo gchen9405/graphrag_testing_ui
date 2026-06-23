@@ -108,9 +108,16 @@ in. On each run it rebuilds only `input\` from your staged corpus; **`output\` i
 (so a long index is never lost by starting a run — wipe it only with the **Clear output**
 button), and **`prompts\` (and anything else under `msgragtest\`) is left untouched.**
 
-The app launches each executable with its working directory set to `BASE_DIR`, so
-the exe's hard-coded relative `msgragtest\` path resolves correctly. **No copying or
-syncing between folders happens** — both exes share the one `msgragtest` folder.
+Each exe resolves its `msgragtest` project root **relative to its own location**, not
+to the working directory. In the onedir layout that means each exe looks for
+`<BASE_DIR>\<exe>\msgragtest`, which wouldn't exist. So on startup the app creates a
+**directory junction** inside each exe's folder
+(`graphrag_pipeline\msgragtest`, `graphrag_querying\msgragtest`) pointing at the one
+real `<BASE_DIR>\msgragtest`. Junctions need no admin rights; the files are never
+copied or duplicated, so **both exes share the single `msgragtest` folder** (the
+indexer's `output\` is exactly what the querier reads). A flat `--onefile` exe sitting
+directly in `BASE_DIR` already finds `msgragtest` as a sibling, so no junction is made
+in that case.
 
 You can also override without editing the file, via environment variables:
 
